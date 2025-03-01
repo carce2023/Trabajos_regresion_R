@@ -1,0 +1,378 @@
+---
+title: "Trabajo Regresión Avanzada"
+author: "María Cecilia Arce"
+date: "2-03-2024"
+output:
+  html_document:
+    toc: yes
+    code_folding: show
+    toc_float: yes
+    df_print: paged
+    theme: united
+    code_download: true
+  pdf_document:
+    toc: yes
+    code_folding: show
+    toc_float: no
+    df_print: paged
+    theme: united
+    code_download: true
+
+
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr) # Manipulation and transformation of data
+library(readxl) # Reading Excel files
+library(ggplot2) # Creating elegant data visualisations using the Grammar of Graphics
+library(MVN) # Multivariate normality tests
+library(corrplot) # Visualization of correlation matrices
+library(aod) # Analysis of Overdispersed Data
+library(Ecdat) # Data sets for econometrics
+library(car) # Companion to Applied Regression, includes data sets and functions
+library(lmtest) # Testing linear regression models
+library(MASS) # Support functions and data sets for Venables and Ripley's MASS
+library(robustbase) # Basic robust statistics
+library(quantreg) # Quantile regression
+library(olsrr) # Tools for building OLS regression models
+library(tidyverse) # An opinionated collection of data science packages
+library(caret) # Classification and regression training
+library(glmnet) # Lasso and elastic-net regularized generalized linear models
+library(pls) # Partial least squares and principal component regression
+library(nortest) # Tests for normality
+library(moments) # Moments, cumulants, skewness, kurtosis and related tests
+library(stats) # Statistical functions included in base R
+library(reshape2) # Flexibly reshape data
+library(gridExtra) # Arranging multiple grid-based plots
+library(lsr) # Companion to "Learning Statistics with R"
+library(gamlss) # Generalised Additive Models for Location Scale and Shape
+library(ggpubr) # 'ggplot2' Based Publication Ready Plots
+library(pgirmess) # Spatial analysis and data mining
+library(ResourceSelection) # Resource selection (habitat) functions
+library(vcd) # Visualizing categorical data
+library(pROC) # Display and analyze ROC curves
+library(ROCR) # Visualizing the performance of scoring classifiers
+
+
+```
+
+## Ejercio 3 - REGRESION LOGISTICA
+
+### a) Modelo Logístico. Bondad de ajuste. Selección de predictores
+
+```{r}
+# Eliminar todos los objetos en el entorno global
+rm(list = ls())
+library(readr)
+
+# Un modelo logistico se utiliza para predecir la ocurrencia de un evento binario (ocurre sí o no). La variable dependiente tiene que ser categorica (0-1). Utiliza la función logistica (curva sigmoide S), P=1/1+e^(B0+B1x1+B2x2...). Los B se calculan utilizando técnicas de optimizacion como la de máxima verosimilitud: los valores de los coeficientes que maximizan la probabilidad
+
+datos <- read.table("C:/Users/arceg/OneDrive/Escritorio/RA/prostata.csv", sep = ";", header = TRUE)
+
+#Analizo tipo de datos
+str(datos)
+
+#cambio nombre a las columnas
+colnames(datos) <- c("volumnen", "peso", "edad", "hiperplacia", "invasion_vesicular", "p_capsular", "gleason", "puntuacion_gleason", "psa" )
+
+#Convierto en factor a la variable "gleason" por ser una categoria
+
+datos$gleason <- as.factor(datos$gleason)
+print(datos)
+levels(datos$gleason)
+
+#Veo cómo es la clase invasion_vesicular: variable dependiente (de corte binario) 
+table(datos$invasion_vesicular) 
+```
+Es una base desbalanceada: la variable dependiente invasion_vesicular tiene 77 casos o (negativos) y 22 casos 1 (positivos)
+
+```{r}
+#construyo un modelo logistico con todas las varibles, y calculo el summary para ver cómo se relacionan todas las variables con la variable dependiente
+
+modelo_log <- glm( invasion_vesicular~ ., data=datos, family = "binomial") 
+summary (modelo_log)
+
+
+
+```
+Es un buen modelo, el Residual deviance en menor que el Null deviance que es la medida de desviacion considerando sólo el intercepto, o sea sin las variables independientes. 
+
+Sólo hay dos variables significativas la p_capsular y la psa.
+
+Interesa tambien valorar el criterio de información de Akaike (AIC): es una medida de la calidad relativa de un modelo estadístico. Cuanto menor sea el valor de AIC, mejor será el ajuste del modelo. Se usa para compararlo con otro modelo. 
+
+El gleason6 no aparece porque al ser categrico, se toma como base (valor 0) para los otros gleason. Los coeficientes de los otros gleason se toman en relacion a este. 
+
+
+```{r}
+#Selecciono los predictores más significativos. Interesa evaluar cómo funciona el modelo con la menor cantidad de variables ya que considerar a todas podría generar un modelo sobreajustado que no generalice bien con nuevos datos
+
+modelo_log2 <- glm ( invasion_vesicular~ p_capsular+psa, data = datos, family = "binomial")
+summary(modelo_log2)
+
+```
+modelos_log2: es un buen modelo. Tiene un AIC menor, incluso mejor que el anterior (modelo_log) que usaba todas las variables. 
+
+```{r}
+#Verifico todas las combinaciones posibles de variables por si hay alguna combinacion que tenga un menor AIC. Con la instruccion "step" y parametro "backward" analiza la variación del AIC según va  quitando cada una de las variables.
+
+step(modelo_log, direction = "backward") 
+
+```
+
+Constato que el modelo que tiene menor valor de AIC es el modelo que incluye la p_capsular +  psa
+
+
+```{r, warning=FALSE}
+#Realizo por otro método para la seleccion de variables. En este caso que tenga un mayor R^2 ajustado. El R^2 evaluar la proporción de la variabilidad en la variable dependiente que es explicada por el modelo; tiene en cuenta la cantidad de variables predictoras y penaliza la inclusión de predictores adicionales que no mejoran significativamente la capacidad predictiva del modelo.
+
+require(leaps)
+mejores_modelos <- regsubsets(datos$invasion_vesicular ~ ., data = datos, nvmax = 10) 
+summary(mejores_modelos)
+which.max(summary(mejores_modelos)$adjr2)
+
+```
+Me sugiere que el modelo 4 con las variables hiperplacia, p_capsular, gleason8, psa, tiene el mayor R^2.
+
+FALSE indica que ninguna variable fue predefinida (forzada) para estar o no estar. 
+
+```{r}
+#Calculo el modelo con las 4 variables según este método 
+modelo_log3 <- glm ( invasion_vesicular~ hiperplacia+p_capsular+gleason+psa, data = datos, family = "binomial")
+summary(modelo_log3)
+
+
+```
+El AIC: 51.448 de este modelor es mayor que el AIC del modelo_log2. Por lo tanto me quedo con el modelo_log2
+
+
+
+```{r}
+#Analizo la bondad del ajuste de manera analítica usando el Test Hosmer-Lemeshow. Este test explica qué tan bien se ajusta el modelo a los datos observados. Lo aplico para los tres modelos analizados. 
+
+#La H0: No hay discrepancia significativa entre las frecuencias observadas y esperadas 
+library(ResourceSelection)
+
+hoslem.test(datos$invasion_vesicular, modelo_log$fitted.values)
+hoslem.test(datos$invasion_vesicular, modelo_log2$fitted.values)
+hoslem.test(datos$invasion_vesicular, modelo_log3$fitted.values)
+
+```
+En todos los casos el p-valor >0,05, por lo que podemos decier que no hay evidencia para negar la H0. Concluimos que los modelos se ajustan bien a los datos observados. 
+
+
+```{r}
+#Realizo un gráfico para ver cómo interactuan las dos variables consideradas en el modelo: psa y p_capsular
+
+p1=ggplot(aes(x=psa, y=p_capsular, fill=invasion_vesicular, color=invasion_vesicular),data=datos)+
+  geom_point(aes(x=psa, y=p_capsular))
+p1
+
+
+
+```
+Observo que la invasion_vesicular (variable dependiente) es 1 para valores de psa> 2 y p_capsular> 0. 
+Los puntos acumulados en la parte inferior del gráfico podrian expicar que, para valores de p_capsular < -1, no se da la invacion_vesicular independientemente del valor del psa
+
+
+### b) Curva ROC y otras medidas de bondad de clasificación
+
+```{r}
+#Otra manera de conoce la bondad de un modelo regresion logistico es a través de la curva ROC y otras metricas. La curva roc compara la clase o dato verdadero con la prediccion. Un valor de AUC cercano a 1 indica una muy buena prediccion. 
+
+#Para un mejor análisis del modelo conviene separar los datos en entrenamiento y testing 
+
+set.seed(550) 
+
+indices_entrenamiento <- sample(nrow(datos), 0.8 * nrow(datos))
+datos_entrenamiento <- datos[indices_entrenamiento, ]
+datos_test <- datos[-indices_entrenamiento, ]
+
+summary(datos_entrenamiento)
+summary (datos_test)
+```
+
+```{r}
+#genero un nuevo modelo, similar a modelo_log2 pero utilizando datos de entrenamiento
+modelo_log4 <- glm(invasion_vesicular ~ p_capsular+psa, data=datos_entrenamiento, family = "binomial")
+summary(modelo_log4)
+```
+
+```{r}
+#genero valores predichos según modelo vs valores reales
+predicciones_log4<- predict(modelo_log4, newdata = datos_test, type = "response")
+predicciones_log4
+```
+
+```{r}
+#Calculo y grafico la curva roc del modelo_log4 (2 variables)
+
+curva_roc <- roc(response = datos_test$invasion_vesicular, predictor = predicciones_log4) 
+plot(curva_roc,col="blue",lwd=2,main="ROC test")
+legend("bottomright",legend=paste("AUC=",round(auc(curva_roc),4)))
+
+```
+La curva ROC muestra la tasa de verdaderos positivos (Sensibilidad) en función de la tasa de 0.90), indica que es un buen modelo. 
+
+```{r}
+#Otras medidas de clasificaicone para el modelo_log4, comparo predicciones respecto a las observaciones 
+
+predicciones <- ifelse(predicciones_log4 > 0.5, yes = 1, no = 0) 
+
+matriz_confusion <- table(datos_test$invasion_vesicular, predicciones, dnn = c("observaciones", "predicciones"))
+matriz_confusion
+
+```
+
+
+```{r}
+#Gráfico de la matriz de confusion 
+library(vcd)
+mosaic(matriz_confusion, shade = T, colorize = T, gp = gpar(fill =  matrix(c("lightblue","brown", "brown","lightblue"), 2, 2)))
+```
+
+```{r}
+#Cálulo otras métricas
+TP<-3
+TN<-13
+FP<-2
+FN<-2
+
+#Métricas
+precision<-TP/(TP+FP)
+recall<-TP/(TP+FN)
+especificidad<-TN/(TN+FP)
+accuracy<-(TP+TN)/(TP + TN + FP + FN)
+
+cat (' Precision: ', precision, '\n', 'Recall: ', recall, '\n', 'Especificidad: ', especificidad, '\n', 'Accuracy: ', accuracy, '\n')
+
+f1_score<-(2*precision*recall)/(precision+recall) 
+f1_score
+
+```
+*Precisión: proporción de observaciones positivas correctamente clasificadas entre todas las observaciones clasificadas como positivas. Se calcula como TP/(TP+FP).
+
+*Sensibilidad (Recall o True Positive Rate): proporción de observaciones positivas correctamente clasificadas entre todas las observaciones reales positivas. Se calcula como TP/(TP+FN).
+
+*Especificidad (Specificity): Proporción de observaciones negativas correctamente clasificadas entre todas las observaciones reales negativas. Se calcula como TN/(TN+FP).
+
+*Exactitud (Accuracy): Proporción total de las observaciones correctamente clasificadas. Se calcula como (TP+TN)/(TP+TN+FP+FN).
+
+*F1-score es una medida de la precisión del modelo que tiene en cuenta la precisión y el recall (sensibilidad). Es útil cuando se tiene un conjunto de datos desbalanceado en términos de la distribución de clases, cómo este caso. Un valor de F1-score más alto indica un mejor equilibrio entre precisión y recall.
+
+
+```{r}
+#Porcentaje de error del modelo
+
+predicciones_log4<- predict(object = modelo_log4, newdata = datos_test, type = "response")
+head(predicciones_log4)
+predicciones_test<-ifelse(predicciones_log4>0.5,1,0)
+
+error_RegLog<- mean(datos_test$invasion_vesicular!= predicciones_test)*100 
+error_RegLog
+
+```
+El error del modelo_log4 es del 20%
+
+```{r}
+#Cálculo del promedio de las veces que el modelo acerto (la inversa del error)
+
+mean(predicciones_test==datos_test$invasion_vesicular)
+```
+El modelo acertó el 80% de las veces
+
+### c) Comparación con otra metodología vista en clase de clasificación
+```{r, warning=FALSE}
+library(pROC)
+library(e1071)
+#Utilizaré Suppor Vector Machine como otro metodo para clasificar
+
+modelo_svm <- svm(invasion_vesicular ~ p_capsular+psa, data=datos_entrenamiento, method="C-classification", kernel="linear", cost=10)
+summary(modelo_svm)
+```
+Se uso un kernel lineal por lo que no fue necesario el parametro gamma.
+
+
+```{r}
+#Calculo el error del modelo
+predicciones_svm <-  predict(object = modelo_svm, newdata = datos_test, type = "response")
+head(predicciones_svm)
+predicciones_svm_test<-ifelse(predicciones_svm>0.5,1,0)
+
+error_svm<- mean(datos_test$invasion_vesicular!= predicciones_svm_test)*100 
+error_svm
+
+```
+El modelo svm da un error del 25% por lo que es mejor el modelo regresion.
+
+```{r}
+#Calculo el promedio de las veces que el modelo acertó 
+
+mean(predicciones_svm_test==datos_test$invasion_vesicular)
+
+```
+El modelo svm acertó el 75% de las veces. 
+
+```{r}
+#Matriz de confusion para el modelo svm
+matriz_confusion <- table(datos_test$invasion_vesicular, predicciones_svm_test, dnn = c("observaciones", "predicciones"))
+matriz_confusion
+```
+```{r}
+#Métricas para el modelo svm
+TP<-3
+TN<-12
+FP<-3
+FN<-2
+
+#Métricas
+precision<-TP/(TP+FP)
+recall<-TP/(TP+FN)
+especificidad<-TN/(TN+FP)
+accuracy<-(TP+TN)/(TP + TN + FP + FN)
+
+cat (' Precision: ', precision, '\n', 'Recall: ', recall, '\n', 'Especificidad: ', especificidad, '\n', 'Accuracy: ', accuracy, '\n')
+
+f1_score<-(2*precision*recall)/(precision+recall) 
+f1_score
+
+
+
+```
+*F1-score es menor que el modelo anterior por lo que el modelo es un peor modelo.
+
+
+### d) Análisis de cada factor por separado
+```{r}
+#coeficientes del mejor modelo_log4 
+modelo_log4$coefficients
+
+#Coeficientes del mejor modelor en términos de odds ratios exponenciales: los vuelve a su escala original. Indica cuántas veces es más probable que ocurra el evento cuando una variable predictora aumenta en una unidad.
+exp(modelo_log4$coefficients)
+
+```
+Estos son los coeficientes del modelo en términos de odds ratio.
+[Recordar que  ln(P/1-P)= ln(odds)]. 
+Con los odds ratios exponenciales de los coeficientes del modelo de regresión logística se puede interpretar el impacto relativo de cada variable predictora en la variable de resultado.
+
+*>1 asociacion positiva entre la variable independiente y probabilidad de exito(aumenta la variable y aumenta la probabilidad)
+
+*<1 asociacion negativa aumenta la variable y disminuye la probabilidad de exito
+
+*=1 son iguales
+
+La p_capsular (8.93) como la psa (7.12)  tienen asociacion positiva, significa que al aumentar estas variables aumenta la probabilidad de invacion_vesicular. 
+
+El aumento de una unidad de la p_capsular hace que aumente 8.93 veces la probabilidad de invacion_vesicular. A su vez el aumento de una unidad de psa hace que aumente 7.12 veces más la probabilidad de invacion_vesicular.
+
+Un Intercept cercano a cero indica que, cuando todas las variables son cero, la ocurrencia del evento invasion_vesicular es cercana también a cero. 
+
+```{r}
+#Otros métodos de clasificacion
+#LDA Análisis discriminatorio lineal
+#QDA Análisis discriminatorio cuadrático
+
+
+```
+

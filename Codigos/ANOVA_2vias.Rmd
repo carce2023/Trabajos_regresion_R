@@ -1,0 +1,261 @@
+---
+title: "Trabajo Regresión Avanzada"
+author: "María Cecilia Arce"
+date: "2-03-2024"
+output:
+  html_document:
+    toc: yes
+    code_folding: show
+    toc_float: yes
+    df_print: paged
+    theme: united
+    code_download: true
+  pdf_document:
+    toc: yes
+    code_folding: show
+    toc_float: no
+    df_print: paged
+    theme: united
+    code_download: true
+
+
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr) # Manipulation and transformation of data
+library(readxl) # Reading Excel files
+library(ggplot2) # Creating elegant data visualisations using the Grammar of Graphics
+library(MVN) # Multivariate normality tests
+library(corrplot) # Visualization of correlation matrices
+library(aod) # Analysis of Overdispersed Data
+library(Ecdat) # Data sets for econometrics
+library(car) # Companion to Applied Regression, includes data sets and functions
+library(lmtest) # Testing linear regression models
+library(MASS) # Support functions and data sets for Venables and Ripley's MASS
+library(robustbase) # Basic robust statistics
+library(quantreg) # Quantile regression
+library(olsrr) # Tools for building OLS regression models
+library(tidyverse) # An opinionated collection of data science packages
+library(caret) # Classification and regression training
+library(glmnet) # Lasso and elastic-net regularized generalized linear models
+library(pls) # Partial least squares and principal component regression
+library(nortest) # Tests for normality
+library(moments) # Moments, cumulants, skewness, kurtosis and related tests
+library(stats) # Statistical functions included in base R
+library(reshape2) # Flexibly reshape data
+library(gridExtra) # Arranging multiple grid-based plots
+library(lsr) # Companion to "Learning Statistics with R"
+library(gamlss) # Generalised Additive Models for Location Scale and Shape
+library(ggpubr) # 'ggplot2' Based Publication Ready Plots
+library(pgirmess) # Spatial analysis and data mining
+library(ResourceSelection) # Resource selection (habitat) functions
+library(vcd) # Visualizing categorical data
+library(pROC) # Display and analyze ROC curves
+library(ROCR) # Visualizing the performance of scoring classifiers
+
+
+```
+
+## Ejercio 2 - ANOVA 2 vias
+### a) Análisis de cada factor por separado
+
+```{r}
+# Eliminar todos los objetos en el entorno global
+rm(list = ls())
+library(readr)
+datos <- read.table("C:/Users/arceg/OneDrive/Escritorio/RA/odonto.csv", sep = ";", header = TRUE)
+
+colnames(datos) <- c("muestra", "largo", "soporte", "dosis")
+
+#Dimensión del objeto, ver las primeras filas, traigo los datos
+dim(datos)
+head(datos)
+
+# ANOVA 2 vias, estudia la relacion entre una variable dependiente cuantitativa (longuitud) y 2 variables independientes cualitativas (soporte y la dosis), ambas con distintos niveles. 
+#Convierto en factor a soporte y dosis para que me lo reconozca como variable categorica
+datos$soporte=as.factor(datos$soporte)
+datos$dosis=as.factor(datos$dosis)
+
+#Elimino la columna "muestra"
+datos <- datos[,2:4]
+datos
+```
+```{r}
+#Se analiza por separado la variable soporte y dosis para ver si influyen en el largo 
+#Graficamente
+attach(datos)
+boxplot(largo~soporte, col= c("blue", "green"), main="Largo y soporte usado", xlab = "soporte", ylab = "largo")
+
+#Analiticamente, la H:0 = que que las medias son iguales 
+aov.soporte <-aov(datos$largo~datos$soporte,data=datos)
+summary(aov.soporte)
+
+```
+0,06 > 0,05 (nivel de significiacia), por lo que no se rechaza que la media de cada grupo (OJ y VC) sean iguales. Quiere decir que el tipo de soporte usado no influye en la medida del largo. Esto es siempre que se cumpla las condiciones del uso de ANOVA: la normalidad y homogeneidad de la varianza
+
+```{r}
+# Analizo la normalidad
+# Lo veo graficamente
+qqnorm(resid(aov.soporte))
+qqline(resid(aov.soporte))
+
+# Opcion 1 Shapiro test
+shapiro.test(residuals(aov.soporte))
+
+# Opción 2 Anderson-Darling 
+library(nortest)
+ad.test(residuals(aov.soporte))
+
+#Opción 3 D'Agostino test
+library(moments)
+agostino.test(residuals(aov.soporte))
+
+
+# Analizamos la homocedasticidad
+#Opción 1 Bartlett test
+bartlett.test(largo,soporte)
+
+#Opción 2 Levene Test, para muestras pequeñas
+leveneTest(largo, soporte)
+
+
+```
+Graficamente se ve que salvo algunos puntos cumple la normalidad.Coincide con los dastos del test de normalidad al ser el p-valor > 0.05 (nivel de significacia) no rechazo normalidad. 
+
+Tampoco se rechaza la homocedasticidad, los test dan mayor que el nivel de significancia. 
+
+POr lo tanto se concluye que el tipo de soporte no afecta al largo. 
+
+```{r}
+# si no se cumpliria podría transformar los datos pero se complica la interpretacion
+
+```
+
+```{r}
+# Idema para largo y la dosis
+#Graficamente
+
+boxplot(datos$largo~datos$dosis, col= c("red", "yellow", "purple","grey"), main= "Largoy dosis usada", xlab ="dosis",ylab = "Largo")
+
+#Analiticamente, la H:0 = que que las medias son iguales 
+aov.dosis <-aov(datos$largo~datos$dosis, data=datos)
+summary(aov.dosis)
+
+
+```
+Graficamente se ve una importante diferencia en las medias, condice con el analisis del ANOVA, p-valor es casi 0 < 0,05 por lo que se puede rechazar la H0 de que las medias son iguales siempre que se cumpla las condiciones de normalidad y homocedastisidad. 
+Que las medias no sean iguales (al menos dos de ellas) quiere decir que la dosis sí influye en la variables respuesta que es la longuitud.
+
+
+```{r}
+#Verifico las condiciones del ANOVA
+# Analizo la normalidad
+# Lo veo graficamente
+qqnorm(resid(aov.dosis))
+qqline(resid(aov.dosis))
+
+# Opcion 1 Shapiro test
+shapiro.test(residuals(aov.dosis))
+
+# Opción 2 Anderson-Darling 
+
+ad.test(residuals(aov.dosis))
+
+#Opción 3 D'Agostino test
+agostino.test(residuals(aov.dosis))
+
+
+# Analizamos la homocedasticidad
+#Opción 1 Bartlett test
+bartlett.test(largo,dosis)
+
+#Opción 2 Levene Test, para muestras pequeñas
+leveneTest(largo, dosis)
+
+```
+Cumple las condiciones de ANOVA. Se puede confirmar que las medias no son iguales
+
+
+### b) Análisis de la interacción
+En la interaccion se puede verificar cómo afecta conjuntamente las dos variables dependientes (dosis y tipo de soporte) a la variable dependiente (largo). 
+
+```{r}
+# Analizo graficamente como interactuan las variables respecto a la media
+
+interaction.plot(trace.factor = datos$soporte, x.factor = datos$dosis, response = datos$largo, fun = "mean", legend = TRUE, col = c("blue", "green"), lty = c(1, 1), lwd = 2) 
+
+interaction.plot(trace.factor = datos$dosis, x.factor = datos$soporte, response = datos$largo, fun = "mean", legend = TRUE, col = c("red", "gold","grey"), lty = c(1,1,1), lwd = 2)
+
+
+# Analizo analiticamente
+aov.2vias <-aov(largo~soporte*dosis,data=datos)
+summary(aov.2vias)
+
+```
+El primer gráfico de interacción se ve como la media del largo cambia respecto a la dosis para cada tipo de soporte. 
+El el segundo gráfico se ve como la media del largo cambia según el tipo de soporte para cada una de las tres dosis. En el caso de la dosis 2 (linea gris) la influencia no cambia, en cambio con la dosis 0,5 y 1 influye en la media el tipo de soporte. 
+
+Al no cruzarce las líneas, podría significar que los factores soporte y dosis actúan de modo independiente y no interactúan entre sí de modo adicional. 
+
+En los resultados del anova, las variables soporte y dosis son significativas, lo que puede entenderse como que afectan  a la variable respuesta cada una de manera independiente. En cambio la interacción soporte-dosis es menos significativa. 
+
+```{r}
+#Para saber cuán significativa es, o lo que es lo mismo qué proporción de la variable respuesta es explicada por cada variale se usa el eta cuadrado parcial(% de la varianza explicada por las variables predictoras)
+etaSquared(aov.2vias)
+
+```
+eta.sq=R2 (suma de cuadrados del efecto/suma de cuadrados totales)
+eta.sq.part = (suma de cuadrados del efecto/(suma de cuadrados totales+suma de cuadrado de errores))
+Significa que el tipo de soporte explica el 22% de la varianza de la variable largo, la dosis el 77% y la interacción entre soporte y dosis el 13% (esta interaccion es considerada entre media y baja) por lo que se podría plantear como opción un modelo anova 2 vias sin interacción.
+
+Verifiamos si el modelo cumple las condiciones de normalidad y homosedasticidad. 
+
+```{r}
+
+# Analizo la normalidad
+# Lo veo graficamente
+qqnorm(resid(aov.2vias))
+qqline(resid(aov.2vias))
+
+# Opcion 1 Shapiro test
+shapiro.test(residuals(aov.2vias))
+
+# Opción 2 Anderson-Darling 
+ad.test(residuals(aov.2vias))
+
+#Opción 3 D'Agostino test
+agostino.test(residuals(aov.2vias))
+
+
+#Opción 2 Levene Test, para muestras pequeñas
+leveneTest(largo~soporte*dosis, data = datos)
+
+```
+No rechano normalidad ni homocedasticidad
+
+### c) Comparaciones post-hoc y recomendaciones.
+
+Las comparaciones post-hoc se utilizan cuando hay diferencias estadisticas entre los grupos.  
+
+```{r}
+# Para el caso del anova 2 vias, se utiliza la funcion Turkey que compara todas las posibles combinaciones de medias de las variables y niveles, además determina cuales son significativamente diferentes
+
+TukeyHSD(aov.2vias, conf.level=0.95)
+```
+Para la variable soporte y dosis son todos significativos. 
+En cambio para la interaccion algunas combinaciones no son significativas: VC:2-OJ:2, OJ:2-OJ:1, VC:2-OJ:1, VC:1-OJ:0.5, no hay evidencia que sus medias sean distintas
+
+Se usa el p-adj (p-valor ajustado) que es el corregido porque en las multiples comparaciones tiene más posibilidades de error
+
+```{r}
+# Dado que la interacción entre las dos variables no parece ser tan significativa, se podría plantea un modelo de anova de 2 vias sin interaccion
+
+aov.solo2vias <-aov(largo~soporte+dosis,data=datos)
+summary(aov.solo2vias)
+
+etaSquared(aov.solo2vias)
+```
+En este caso se podría decir que el 20% de la variacion del largo es debido al soporte y el 74% es debido a la dosis. 
+
+

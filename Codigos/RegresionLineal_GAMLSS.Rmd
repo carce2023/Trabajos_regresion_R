@@ -1,0 +1,664 @@
+---
+title: "Trabajo Regresión Avanzada"
+author: "María Cecilia Arce"
+date: "2-03-2024"
+output:
+  html_document:
+    toc: yes
+    code_folding: show
+    toc_float: yes
+    df_print: paged
+    theme: united
+    code_download: true
+  pdf_document:
+    toc: yes
+    code_folding: show
+    toc_float: no
+    df_print: paged
+    theme: united
+    code_download: true
+
+
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr) # Manipulation and transformation of data
+library(readxl) # Reading Excel files
+library(ggplot2) # Creating elegant data visualisations using the Grammar of Graphics
+library(MVN) # Multivariate normality tests
+library(corrplot) # Visualization of correlation matrices
+library(aod) # Analysis of Overdispersed Data
+library(Ecdat) # Data sets for econometrics
+library(car) # Companion to Applied Regression, includes data sets and functions
+library(lmtest) # Testing linear regression models
+library(MASS) # Support functions and data sets for Venables and Ripley's MASS
+library(robustbase) # Basic robust statistics
+library(quantreg) # Quantile regression
+library(olsrr) # Tools for building OLS regression models
+library(tidyverse) # An opinionated collection of data science packages
+library(caret) # Classification and regression training
+library(glmnet) # Lasso and elastic-net regularized generalized linear models
+library(pls) # Partial least squares and principal component regression
+library(nortest) # Tests for normality
+library(moments) # Moments, cumulants, skewness, kurtosis and related tests
+library(stats) # Statistical functions included in base R
+library(reshape2) # Flexibly reshape data
+library(gridExtra) # Arranging multiple grid-based plots
+library(lsr) # Companion to "Learning Statistics with R"
+library(gamlss) # Generalised Additive Models for Location Scale and Shape
+library(ggpubr) # 'ggplot2' Based Publication Ready Plots
+library(pgirmess) # Spatial analysis and data mining
+library(ResourceSelection) # Resource selection (habitat) functions
+library(vcd) # Visualizing categorical data
+library(pROC) # Display and analyze ROC curves
+library(ROCR) # Visualizing the performance of scoring classifiers
+
+
+```
+
+## Ejercio 1 - MODELO LINEAL
+
+### a) Ejercicio 1 modelo lineal
+
+
+```{r}
+# Eliminar todos los objetos en el entorno global
+rm(list = ls())
+
+#Levanto el dataset y hago una primera exploracion de datos
+library(readr)
+datos <- read.table("C:/Users/arceg/OneDrive/Escritorio/RA/inmobiliaria.csv", sep = ";", header = TRUE)
+
+#Cantidad de registos 
+n <- nrow(datos)
+n
+
+#Nombres de las columnas
+colnames(datos)
+
+```
+Los datos tienen 409 registros y 6 columnas
+
+```{r}
+#Analizo el tipo de datos
+str(datos)
+```
+Los valores son todos numericos no se necesita convertir a factor. La variable "negocios" es entera.
+
+```{r}
+#Analizo graficamente la relacion entre las variable
+pairs(datos)
+
+```
+Obtengo los gráficos de cada par de variables.
+
+```{r}
+#Analizo la correlacion
+M=cor(datos)
+corrplot.mixed(M)
+
+```
+
+
+Se observa que el precio (variabel dependiente) tiene mayor corelacion con la distancia y menor con la edad del inmueble. 
+
+```{r}
+#Realizo un primer modelo lineal de una variable y analizo la relacion del  precio con la distancia 
+
+modelo1 <- lm (precio ~ distancia, data=datos)
+summary (modelo1)
+
+```
+El R2 es una medida de la variabilidad total, cuanto más cercano a 1 es mejor. En este caso indica que el 45% de la variable "precio" es explicada por la variable "distancia". 
+
+En este caso el R2 y el R2-ajustado son practicamente el mismo porque se usó un sólo predictor. El R2-ajustado penalizan cuando se agregan predictores que no mejoran el modelo. 
+
+La distancia es un predictor significativo del precio. El coeficiente, que en este caso es negativo, establece que, por cada unidad que aumente la variable distancia, el precio disminuye en 0,00219 unidades.
+
+
+```{r}
+#Evaluo otro modelo lineal simle con la variable cantidad de "negocios"
+
+modelo2 <- lm (precio~negocios, data=datos)
+summary (modelo2)
+
+```
+El R2 es 0.32 es menor que en el modelo1, era lo esperado porque la variable distancia tiene una correlación mayor. 
+
+
+```{r}
+#Con el modelo1 gráfico y analizo la validacion de los supuestos
+attach(modelo1)
+
+#Grafico el modelo 1 con bandas de ajuste que se grafican con la fucnion geom_smooth
+ggplot(datos, aes(x = distancia, y = precio)) + geom_point() + geom_smooth(method = "lm")
+
+```
+Dentro de las bandas hay un 95% de probabilidad de que esten los verdaderos valores de la regresion: la recta que mejor ajusta a los datos.
+
+```{r, warning=FALSE}
+#Validacion de los supuestos del modelo de regresión: normalidad, homocedasticidad e independencia de los residuos
+
+#Agrego al dataset dos columnas con las predicciones y los residuos del modelo
+datos$predicciones <- modelo1$fitted.values 
+datos$residuos <- modelo1$residuals
+
+# Analisisis gráfico de la normalidad de los resiudos a través de un histograma
+ggplot(data = datos, aes(x = residuos)) + geom_histogram(aes(y = ..density..)) + 
+  labs(title = "Histograma de los residuos") + theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+La curva no parecería de una distribución normal. Además se observan valores atipicos. 
+
+```{r}
+#Grafica del Q-Q plot de los residuos
+qqnorm(modelo1$residuals) 
+qqline(modelo1$residuals)
+
+```
+En el gráfico de cuantiles normales de los residuos (Q-Q plot), se ve que varios puntos no siguen la distribución normal, son los que se alejan de la recta
+
+
+```{r}
+#Analisis de modo analitico de la normalidad de los residuos con el test Shapiro-wilk. H0=los residuos siguen una distribución normal
+
+shapiro.test(modelo1$residuals)
+
+```
+El p-valor es cercano a 0 < 0.05 (nivel de significancia), por lo que se rechaza la H0. Esto sugiere que los residuos no siguen una distribución normal.  
+
+```{r}
+#Analizo la homocedasticidad de los residuos, de modo gráfico, 
+ggplot(data = datos, aes(x = predicciones, y = residuos)) + 
+  geom_point(aes(color = residuos)) + 
+  scale_color_gradient2(low = "blue3", mid = "grey", high = "red") + 
+  geom_hline(yintercept = 0) + geom_segment(aes(xend = predicciones, yend = 0), alpha = 0.2) + 
+  labs(title = "Distribución de los residuos", x = "predicción modelo", y = "residuo") + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+```
+
+No se ve ningún patron claro. 
+
+```{r}
+#Analizo la homocedasticidad de manera analitica. Uso el test de de Breusch-Pagan. 
+#H0:los residuos son homocedasticos
+
+bptest(modelo1)
+```
+El p-valor 0.23 >0.05, por lo tanto no se rechaza la homocedasticidad
+
+```{r, warning=FALSE}
+#Analizo graficamente la idenpendincia de las observaciones
+
+ggplot(data = datos, aes(x = seq_along(residuos), y = residuos)) + 
+  geom_point(aes(color = residuos)) + 
+  scale_color_gradient2(low = "blue3", mid = "grey", high = "red") + 
+  geom_line(size = 0.3) + labs(title = "Distribución de los residuos", x = "index", y = "residuo")+ 
+  geom_hline(yintercept = 0) + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+```
+En el gráfico no se ve ningún patrón. 
+
+```{r}
+#Analizo analiticamente (test de Durbin Watson) la idependencia de las observacionses
+
+dwt(modelo1)
+
+```
+P-valor=0.1 > 0.05 por lo que no rechazo la idependencia de las observaciones. 
+
+Conclusión: el modelos no cumple con la normalidad sí con la homocedasticidad y la independencia de las observaciones.  
+
+
+```{r}
+#Analisis de outliers (valores atipicos) y puntos influyentes (observaciones con una influencia significativa en el modelo)
+
+#Outliers segun el método de Bonferroni 
+outlierTest(modelo1)
+
+```
+Resulta quela observacion 266 es un outlier
+
+```{r}
+#Graficamente
+influenceIndexPlot(modelo1, vars='Bonf', las=1,col='green')
+
+```
+El método de Bonferroni ajusta el nivel de significancia para evitar los errores de tipo I (F+), es un metodo conservador. 
+
+
+```{r}
+#Analizo puntos influyentes
+par(mfrow=c(2,2))
+plot(modelo1)
+
+```
+Se observan 4 gráficas: 
+
+(1) Gráfico de dispersión de residuos vs. valores ajustados (residuals vs. fitted).Es útil para detectar patrones en los residuos.Se detectan tres puntos influyentes: la observacion 266 (es además un outliers), la 308 y la 109.
+
+(2) Gráfico de cuantiles normales de los residuos (normal Q-Q plot).También se observan las observaciones 266, 308 y 109.
+
+(3) Gráfico de residuos estandarizados vs. valores ajustados (standardized residuals vs. fitted). Los puntos que se alejan podrian indicar un punto influyente u outlaier, en este caso es el 266
+
+(4) Gráfico de Cook's distance, sugiere otros puntos influyentes además del 266: el 144 y 245
+
+```{r}
+#Grafico la distancia de Cook
+dcook<-cooks.distance(modelo1)
+influenceIndexPlot(modelo1, vars='Cook', las=1,col='blue')
+```
+Distancia de Cook: mide la influencia de una observcion en un modelo. Tiene en cuento el efecto de esa observacion en los coeficientes del modelo y el ajuste global cuando esa observacion es excluida. 
+
+
+```{r, include=FALSE}
+#Calculo analiticamente las medidas de influencia de los puntos 
+influence.measures(model = modelo1)
+
+```
+De las medidas de inflluencia de cada observacion. Las que tiene * se consideran más influyentes
+
+dfb.1_: cuánto cambia el primer coeficiente (variable independiente) si se saca esa observación
+
+dfb.dstn:cuánto cambia el segundo coeficiente si se saca esa observación
+
+dffit: influencia global de la observacion, mayor es el valor más influencia tiene
+
+cov.r: como cambia la matriz de cov de los coeficientes si se elimina esa observacion
+
+cook.d: distancia de cook medida global de la influencia de esa observacion en el modelo, cuanto se modifican los coeficientes de la recta con esa observacion
+
+hat: diagonl de la matriz hat (mide la distancia de las observaciones al centro del espacio)
+
+
+```{r}
+#Puntos influyentes
+summary(influence.measures(model = modelo1))
+```
+Este método indica que hay 49 puntos influyentes
+
+
+```{r}
+#Analizo graficamente
+influencePlot(model = modelo1)
+```
+Grafica de puntos influyentes: valore altos de distancia de cook indican se más influyentes.
+
+Residuos estandarizados: mide cuán alejado están los valores observados de los predichos por el modelo
+
+Valores hat: digonal de la matriz hat (distancia de las observaciones al centro). Valores cercanos a uno indican mejor ajuste 
+
+Conclusion: modelo1, no es un buen modelo porque no cumple con el supuesto de normalidad
+
+```{r}
+# Calculo analiticamente los valores de leverage
+leverage <- hatvalues(modelo1)
+
+# Graficar los valores de leverage
+plot(leverage, type = "p", pch = 19, xlab = "Observación", ylab = "Leverage", main = "Gráfico de leverage")
+
+```
+Leverage es el apalancamiento que el punto hace en la recta, Cuanto más cercano a 1, más influyente es la observación
+
+
+
+```{r}
+library(aod)
+#Test de wald: evalua la significancia de los coefcientes de la regresion de modod infividual. H0=beta igual a cero
+
+#Tetseo el intercepto
+
+wald.test(Sigma = vcov(modelo1), b = coef(modelo1), Terms = 1)
+
+#Testeo el beta de la variable independiente
+wald.test(Sigma = vcov(modelo1), b = coef(modelo1), Terms = 2:2)
+
+```
+Se rechaza la H0, se puede decir que los coeficientes son distintos de cero. 
+
+```{r}
+#Transformacion box cox de la variable respuesta, como una manera de intentar lograr normalidad en la distribución de los residuos
+bc <- boxcox(precio ~ distancia, lambda = -2:2, data = datos)
+
+```
+El valor de lambda está entre 0 y 1
+
+```{r}
+#Calculo analiticamente el valor optimo de lambda
+lambda <- bc$x[which.max(bc$y)] 
+lambda
+
+```
+```{r}
+# Modelo Lineal con transformacion usando lambda
+modelo1_transformado <- lm(log10(precio) ~ distancia, data = datos)
+summary(modelo1_transformado)
+
+```
+El modelo1_transformado mejoró respecto al modelo1: el R2 es mayor 0.56
+De todas maneras hay que evaluar si cumple los supuestos.
+
+```{r}
+#Analizo los supuestos analiticamente
+
+#Normalidad de los residuos - test Shapiro Wilk
+shapiro.test(modelo1_transformado$residuals)
+
+#Homocedasticidad de los residuos - test Breusch-Pagan
+bptest(modelo1_transformado)
+
+#Idependencia de las observacionses - test de Durbin-Watson
+dwt(modelo1_transformado)
+
+
+```
+Este modelo no cumple con normalidad. 
+
+Convendría evaluar un modelo multiple o algun método robusto de regresión. 
+
+```{r}
+#Evaluo otro modelo elevandolo al lambda
+modelo1_transformado2 <- lm(precio^0.22 ~ distancia, data = datos)
+summary(modelo1_transformado2)
+```
+```{r}
+#Analizo los supuestos analiticamente
+
+#Normalidad de los residuos - test Shapiro Wilk
+shapiro.test(modelo1_transformado2$residuals)
+
+#Homocedasticidad de los residuos - test Breusch-Pagan
+bptest(modelo1_transformado2)
+
+#Idependencia de las observacionses - test de Durbin-Watson
+dwt(modelo1_transformado2)
+```
+Tampoco el modelo1_trasformado2 cumple el supuesto de normalidad de los residuos. 
+
+```{r}
+# Analiso un modelo con todas las variables para poder compararlo luego con otro modelo de variables seleccionadas
+
+#Vuelvo a cargar datos 
+datos <- read.table("C:/Users/arceg/OneDrive/Escritorio/RA/inmobiliaria.csv", sep = ";", header = TRUE)
+
+modelo_total <- lm(precio~edad+distancia+negocios+latitud+longitud, data= datos)
+summary(modelo_total)
+
+```
+Considerando todas las variables, tenemos un R2 ajustado= 0.57. 
+
+Conviene hacer una seleccion de variables buscando explicar mejor o igual la varibilidad de la variable respuesta con la menor cantidad de variables independientes
+
+
+```{r, warning=FALSE}
+#Seleccion de variables - Método 1
+library(olsrr)
+k <- ols_step_all_possible(modelo_total)
+k
+plot (k)
+```
+Se realiza un analisis exastivo de todas las combinaciones de variables.
+
+El modelo 16 y el 31 dan los mejores valores de R2, R2-ajustado, AIC, SBIC y SBC. El modelo 26 tiene una variable menos, me quedo con este modelo.   
+
+AIC: Akaike Information Criteria 
+SBIC: Sawa's Bayesian Information Criteria 
+SBC: Schwarz Bayesian Criteria 
+MSEP: Estimated error of prediction, assuming multivariate normality 
+FPE: Final Prediction Error 
+HSP: Hocking's Sp 
+APC: Amemiya Prediction Criteria
+
+
+```{r}
+#Para ver que variables tiene el modelo 26 y 31
+tail(k, 10)
+
+```
+El modelo 26 tiene menor valor de Cp Mallows, es lógico porque este criterio castiga la complejidad. El modelo 26 seleccionado incluye: edad, distancia, negocios, latitud
+ 
+
+```{r}
+#Tambien lo puedo ver analiticamente
+k_best <- ols_step_best_subset(modelo_total)
+k_best
+
+```
+Obtiene los mejores modelos según la cantidad de variables
+
+
+```{r, warning=FALSE}
+library(leaps)
+
+#Seleccion de variables - Método 2 -se identifica el valor máximo de R2-ajustado 
+ modelos_backward <- regsubsets(precio ~ ., data = datos, nvmax = 5, method = "backward") 
+summary(modelos_backward)
+
+```
+Indica cuales variables habría que seleccionar según la cantidad
+
+```{r}
+#Selecciono el modelo que tenga el mayor R2 ajustado
+which.max(summary(modelos_backward)$adjr2)
+```
+LLego a la misma conclusión que el método anterior con las variables a seleccionar
+
+```{r}
+#Modelo con las 4 variables seleccionadas
+
+modelo_4variables <- lm(precio ~ edad+distancia+negocios+latitud, data=datos)
+summary(modelo_4variables)
+
+
+
+```
+El R2-ajustado es apenas un poco mayor 0.5716 respecto 0.5706, la mayor ventaja del modelo seleccionado es que tiene una variable menos. 
+
+```{r}
+#Otras medidas
+#Para compara los dos modelos modelo_total (todas las variables), modelo_4variables
+AIC(modelo_total)
+AIC(modelo_4variables)
+```
+El modelo_4variables es el mejor por tener un menor valor de AIC
+
+```{r, warning=FALSE}
+library(Metrics)
+#Error medio absoluto (medio )promedio de los errores
+datos$predicciones1 <- modelo_total$fitted.values 
+datos$predicciones2 <- modelo_4variables$fitted.values
+
+valor_MAE1 <- mae(datos$predicciones1, datos$precio) 
+valor_MAE1
+valor_MAE2 <- mae(datos$predicciones2, datos$precio)
+valor_MAE2 
+```
+El modelo de 4 variables tiene un promedio de error un poco más pequeño. 
+Selecciono el modelo_4variables
+
+```{r}
+#Verifico si el modelos seleccionado modelo_4 variables cumple con los supuestos
+
+#Normalidad de los residuos - test Shapiro Wilk
+shapiro.test(modelo_4variables$residuals)
+
+#Homocedasticidad de los residuos - test Breusch-Pagan
+bptest(modelo_4variables)
+
+#Idependencia de las observacionses - test de Durbin-Watson
+dwt(modelo_4variables)
+
+```
+Sigue si cumplir normalidad.
+Evaluo alguna alternativa robusta
+
+```{r}
+#Si se quisiera analizar la colinealidad se puede usar le criterio VIF (factor de variacion de inflacion)
+vif(modelo_4variables)
+
+```
+Para valores mayores que 5 puede haber colinealidad, para mayores que 10 la colinealidad es importante, en este caso ninguna variable dio un valor mayor que 5, por lo que podemos decir que no hay colinealidad. 
+
+```{r}
+#Test de Wald, H0=el coeficiente vale cero
+#Tetseo el intercepto
+wald.test(Sigma = vcov(modelo_4variables), b = coef(modelo_4variables), Terms = 1)
+
+#Testeo el beta de la variables independientes
+wald.test(Sigma = vcov(modelo_4variables), b = coef(modelo_4variables), Terms = 2)
+wald.test(Sigma = vcov(modelo_4variables), b = coef(modelo_4variables), Terms = 3)
+wald.test(Sigma = vcov(modelo_4variables), b = coef(modelo_4variables), Terms = 4)
+wald.test(Sigma = vcov(modelo_4variables), b = coef(modelo_4variables), Terms = 5)
+
+```
+Todas los coeficientes son distinto de cero
+
+
+```{r}
+#Modelos robustos
+#Vuelvo a cargar los datos y la biblioteca
+datos <- read.table("C:/Users/arceg/OneDrive/Escritorio/RA/inmobiliaria.csv", sep = ";", header = TRUE)
+library(robustbase)
+```
+
+
+```{r}
+#Modelo robusto
+modelo_robusto1 <- lmrob(precio ~ edad+distancia+negocios+latitud, data = datos)
+summary(modelo_robusto1)
+
+```
+Da un mejor R2-ajustado: 0,7
+
+```{r}
+#Otros modelo robustos. Usan como alternativas a la función de mínimos cuadrados ordinarios (ols) la función de pérdida Huber o Bicuadrada
+
+#con huber
+
+modelo_robusto2 <- rlm(precio ~ edad+distancia+negocios+latitud, data = datos, psi=psi.huber)
+summary(modelo_robusto2)
+
+```
+
+```{r}
+#Usando la función de pérdida Bicuadrada
+modelo_robusto3 <- rlm(precio ~ edad+distancia+negocios+latitud, data = datos, psi=psi.bisquare)
+summary(modelo_robusto3)
+
+```
+El error disminuye un poco respecto al  modelo anterior, sin embargo consideramos como mejor de los robustos al modelo_robusto1 porque tiene menor error residual estandard
+
+
+
+```{r}
+library(MASS)
+#Normalidad de los residuos - test Shapiro Wilk
+shapiro.test(modelo_robusto1$residuals)
+
+#Normalidad de los residuos - test Shapiro Wilk
+shapiro.test(modelo_robusto2$residuals)
+
+#Normalidad de los residuos - test Shapiro Wilk
+shapiro.test(modelo_robusto3$residuals)
+```
+Al no cumplir con la normalidad convendría probar con un modelo GAMLSS (Generalized Additive Models for Location, Scale and Shape). 
+
+son modelos de regresión semi-paramétricos. Paramétricos en cuanto a que requieren asumir que la variable respuesta sigue una determinada distribución paramétrica (normal, beta, gamma…) y semi porque los parámetros de esta distribución pueden ser modelados, cada uno de forma independiente, siguiendo funciones no paramétricas (lineales, aditivas o no lineales). 
+Esta versatilidad hace de los GAMLSS una herramienta adecuada para modelar variables que siguen todo un abanico de distribuciones (no normales, asimétricas, con varianza no constante…).
+
+Los modelos GAMLSS asumen que la variable respuesta tiene una función de densidad definida por hasta 4 parámetros (μ,σ,ν,τ)que determinan su posición (p.ej. media), escala (p.ej. desviación estándar) y forma (p. ej. skewness y kurtosis), y que cada uno de ellos puede variar independientemente de los otros en función de los predictores. Estos modelos aprenden por lo tanto hasta 4 funciones, donde cada una establece la relación entre las variables predictoras y uno de los parámetros.
+
+```{r}
+#Modelos gamlss (Generalized Additive Models for Location, Scale and Shape), permiten modelar no solo la mediamedia sino también la escala (varianza) y forma (asimetría y curtosis), en los modelos lineales sólo la media
+
+#Analizo graficamente qué distribución tiene la variable respuesta 
+pp <- ggplot(data = datos, aes(x = precio)) + geom_density(alpha = 0.7, fill = "gray20") + 
+  labs(title = "Distribución del precio") + theme_bw()
+pp
+
+```
+No es una distribución normal, entonces evaluo qué distribucion usar 
+
+```{r, warning=FALSE}
+#Averiguo qué distribucion se asemeja más a la variable depndiente, uso fitDist con el parametros realplus por ser de cero a infinito
+Distribuciones <- fitDist( y = datos$precio, k = log(length(datos$precio)), type = "realplus", trace = FALSE, try.gamlss = TRUE, parallel = "multicore", ncpus = 3L ) 
+
+#Ordeno la distribucion según el mayor valor de GAIC
+Distribuciones$fits %>% enframe(name = "distribucion", value = "GAIC") %>% arrange(GAIC)
+
+
+```
+El GAIC es una generalizacion del AIC (Akaike) el valor más bajo corresponde a un mejor ajuste. La distribución más adecuada en GB2
+
+```{r}
+summary(Distribuciones)
+```
+```{r, warning=FALSE}
+#Modelo gamlss, se aplica la función P-splines sólo en los predictores continuos
+modelo_gamlss <- gamlss(
+                  formula = precio ~ pb(edad)+pb(distancia)+negocios+pb(latitud),
+                  sigma.formula = ~ pb(edad)+pb(distancia)+negocios+pb(latitud),
+                  family  = GB2,
+                  data    = datos,
+                  trace   = FALSE
+                )
+
+summary(modelo_gamlss)
+```
+La funcion pb se utiliza para suavizar las variables predictoras de manera que puedan capturar relaciones no lineales entre la variable predictora y la respuesta
+```{r}
+#Analizo según AIC que modelo es mejor
+AIC(modelo_4variables)
+AIC(modelo_gamlss)
+
+```
+Efectivamente el modelo gamlss da un mejor modelo por tener un valor de AIC menor. 
+
+```{r, warning=FALSE}
+#Analizo los residuos: los gráficos worm son otra forma de evaluar, visualmente, la calidad de un modelo a través de sus residuos.
+wp(modelo_gamlss, ylim.all = 1)
+```
+Esta representación es similar a la de un gráfico Q-Q. Los valores resultantes deberían de ser cero (línea horizontal discontinua). 
+
+Las dos curvas elípticas discontinuas muestran el intervalo de confianza del 95%. Si el modelo es correcto, sólo un 5% de las observaciones deberían quedar fuera. 
+
+También se muestra también un ajuste cúbico (curva continua roja) que ayuda a identificar la tendencia de los residuos.
+
+Concluimos que el modelos_gamlss es un buen modelo. 
+
+```{r}
+#Grafico los residuos
+plot(modelo_gamlss)
+
+```
+-Media cercana a cero
+-Varianza a uno (dispersion de residuos razonable)
+-Coeficiente de sesgo (coef. of skewness):indica la asimetría izquierda de la distribución de los residuos
+-Coeficiente de curtosis (coef. of kurtosis): la forma de la distribución, >3 implica puntiaguda
+-Coeficiente de correlación Filliben (Filliben correlation coefficient): mide la relación entre los residuos y los cuantiles teóricos que se esperarían bajo la suposición de normalidad. Un valor cercano a 1 indica que los residuos siguen de cerca la distribución teórica de normalidad. 
+
+Graficos:
+-Gráfico de dispersión de residuos vs. valores ajustados (residuals vs. fitted)
+-Residos
+-Densidad de los residuos
+-QQplot
+
+
+```{r, warning=FALSE}
+#Analizo la contribución de cada predictor para mu y para sigma
+drop1(modelo_gamlss, parameter = "mu", parallel ="multicore",
+ncpus = 4)
+```
+Como varia AIC eliminando alguna variable
+
+```{r, warning=FALSE}
+#Contribución de cada predictor
+drop1(modelo_gamlss, parameter = "sigma", parallel ="multicore",
+ncpus = 4)
+```
+
